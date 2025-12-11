@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -93,6 +94,28 @@ func fetchUserURL(url string) (*http.Response, error) {
 	return http.Get(url)
 }
 
+// CRITICAL SAST Issue 15: Unsafe Deserialization - Unmarshaling untrusted JSON data
+type UserConfig struct {
+	Command string `json:"command"`
+	Path    string `json:"path"`
+	Data    string `json:"data"`
+}
+
+func deserializeUserConfig(jsonData []byte) error {
+	var config UserConfig
+	// CRITICAL: Deserializing untrusted JSON without validation
+	// This can lead to remote code execution if the data is used in exec.Command
+	if err := json.Unmarshal(jsonData, &config); err != nil {
+		return err
+	}
+	// Dangerous: Executing command from untrusted JSON data
+	if config.Command != "" {
+		cmd := exec.Command("sh", "-c", config.Command)
+		return cmd.Run()
+	}
+	return nil
+}
+
 func main() {
 	// SAST Issue 13: Hardcoded connection string with credentials
 	dsn := fmt.Sprintf("%s:%s@tcp(localhost:3306)/mydb", DB_USER, DB_PASSWORD)
@@ -136,5 +159,11 @@ func main() {
 	// SSRF vulnerability
 	if len(os.Args) > 2 {
 		fetchUserURL(os.Args[2])
+	}
+
+	// CRITICAL: Unsafe deserialization vulnerability
+	if len(os.Args) > 3 {
+		jsonData := []byte(os.Args[3])
+		deserializeUserConfig(jsonData)
 	}
 }
