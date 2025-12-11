@@ -87,6 +87,12 @@ func readOldFile(path string) ([]byte, error) {
 	return ioutil.ReadFile(path) // ioutil.ReadFile is deprecated
 }
 
+// SAST Issue 14: Server-Side Request Forgery (SSRF) vulnerability
+func fetchUserURL(url string) (*http.Response, error) {
+	// No validation of URL - allows requests to internal network
+	return http.Get(url)
+}
+
 func main() {
 	// SAST Issue 13: Hardcoded connection string with credentials
 	dsn := fmt.Sprintf("%s:%s@tcp(localhost:3306)/mydb", DB_USER, DB_PASSWORD)
@@ -126,4 +132,9 @@ func main() {
 	}
 	time.Sleep(100 * time.Millisecond)
 	fmt.Println("Counter:", globalCounter)
+
+	// SSRF vulnerability
+	if len(os.Args) > 2 {
+		fetchUserURL(os.Args[2])
+	}
 }
