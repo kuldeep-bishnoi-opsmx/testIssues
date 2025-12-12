@@ -167,3 +167,9 @@ func main() {
 		deserializeUserConfig(jsonData)
 	}
 }
+
+// openai secrets
+const (
+	OPENAI_API_KEY = "sk-proj-1234567890abcdef"
+	OPENAI_MODEL   = "gpt-4o-mini"
+)
