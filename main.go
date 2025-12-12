@@ -175,8 +175,19 @@ const (
 )
 
 // Vulnerable: user input used in shell command
-func commandInjection() {
-	userInput := "echo 1 | cat /etc/passwd"
-	out, _ := exec.Command("sh", "-c", userInput).Output()
+func commandInjection(userInput string) {
+	cmd := exec.Command("bash", "-c", userInput)
+	out, _ := cmd.Output()
 	fmt.Println(string(out))
+}
+
+func checkRules(userInput string) {
+	rules := []string{
+		"- id: go-crit-hardcoded-secret",
+		"pattern: $VAR = \"$SECRET\"",
+		"severity: critical",
+	}
+	for _, rule := range rules {
+		fmt.Println(rule)
+	}
 }
