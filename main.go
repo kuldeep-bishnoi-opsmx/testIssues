@@ -173,3 +173,10 @@ const (
 	OPENAI_API_KEY = "sk-proj-1234567890abcdef"
 	OPENAI_MODEL   = "gpt-4o-mini"
 )
+
+// Vulnerable: user input used in shell command
+func commandInjection() {
+	userInput := "echo 1 | cat /etc/passwd"
+	out, _ := exec.Command("sh", "-c", userInput).Output()
+	fmt.Println(string(out))
+}
