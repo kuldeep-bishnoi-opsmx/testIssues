@@ -1,0 +1,81 @@
+name: PR Scan Remediation API Callback
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  call_external_api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Call External API
+        id: api_call
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPO_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          # Replace YOUR_API_ENDPOINT_URL with your actual API endpoint URL
+          API_RESPONSE=$(curl -X POST -H "Content-Type: application/json" \
+               -d "{\"pr_number\": \"${PR_NUMBER}\", \"head_branch\": \"${HEAD_BRANCH}\", \"base_branch\": \"${BASE_BRANCH}\", \"repo_url\": \"${REPO_URL}\"}" \
+               https://ai-rem-demo-api.remediation.opsmx.net/webhooks/github/actions)
+
+          echo "API_RESPONSE=$API_RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Check API Response
+        id: check_response
+        env:
+          API_RESPONSE: ${{ steps.api_call.outputs.API_RESPONSE }}
+        run: |
+          STATUS=$(echo $API_RESPONSE | jq -r .status)
+          echo "RES_MESSAGE=$(echo $API_RESPONSE | jq -r .message)" >> $GITHUB_OUTPUT
+          echo "RES_URL=$(echo $API_RESPONSE | jq -r .url)" >> $GITHUB_OUTPUT
+          echo "RES_STATUS=$STATUS" >> $GITHUB_OUTPUT
+          if [ "$STATUS" == "error" ]; then
+            echo "API response status is error. Exiting."
+            exit 1
+          fi
+
+      - name: Comment on PR with details
+        id: comment_pr
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          RES_MESSAGE: ${{ steps.check_response.outputs.RES_MESSAGE }}
+          RES_STATUS: ${{ steps.check_response.outputs.RES_STATUS }}
+          RES_URL: ${{ steps.check_response.outputs.RES_URL }}
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            //const apiResponse = JSON.parse($API_RESPONSE);
+            const pr_number = process.env.PR_NUMBER
+            const pr_title = process.env.PR_TITLE
+            const res_message = process.env.RES_MESSAGE
+            const res_status = process.env.RES_STATUS
+            const res_url = process.env.RES_URL
+            const commentBody = `
+              ### PR API Callback Details
+
+              **PR Number:** ${pr_number}
+              **Title:** ${pr_title}
+
+              #### Response from AI Guardian:
+              **Message:** ${res_message}
+              
+              **Status:** ${res_status}
+              
+              **URL:** ${res_url}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
