@@ -58,7 +58,14 @@ func generateToken() string {
 
 // SAST Issue 7: Insecure file permissions
 func writeConfig(data string) error {
-	return ioutil.WriteFile("/tmp/config.json", []byte(data), 0777)
+	tmpFile, err := os.CreateTemp("", "config-*.json")
+	if err != nil {
+		return err
+	}
+	defer tmpFile.Close()
+	
+	_, err = tmpFile.Write([]byte(data))
+	return err
 }
 
 // SAST Issue 8: Information disclosure - sensitive data in logs
