@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/md5"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"time"
+	"unsafe"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -166,6 +168,27 @@ func main() {
 		jsonData := []byte(os.Args[3])
 		deserializeUserConfig(jsonData)
 	}
+	// NEW: Insecure TLS request
+	if len(os.Args) > 4 {
+		insecureTLSRequest(os.Args[4])
+	}
+
+	// NEW: Unsafe memory access
+	unsafeMemoryAccess()
+
+	// NEW: IDOR vulnerability - missing authorization
+	if len(os.Args) > 5 {
+		userID := 1
+		fileID := 2
+		getUserFile(userID, fileID) // No check if userID owns fileID
+	}
+
+	// NEW: Improper error handling
+	authenticateUser("admin", "wrongpassword")
+
+	// NEW: Weak session management
+	sessionID := generateSessionID()
+	fmt.Println("Session ID:", sessionID)
 }
 
 // openai secrets
@@ -179,4 +202,68 @@ func commandInjection() {
 	userInput := "echo 1 | cat /etc/passwd"
 	out, _ := exec.Command("sh", "-c", userInput).Output()
 	fmt.Println(string(out))
+}
+
+// NEW SAST Issue 16: Insecure TLS Configuration - Disabling certificate verification
+func insecureTLSRequest(url string) (*http.Response, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // CRITICAL: Disables certificate verification
+		},
+	}
+	client := &http.Client{Transport: tr}
+	return client.Get(url) // Vulnerable to man-in-the-middle attacks
+}
+
+// NEW SAST Issue 17: Use of unsafe package - Memory safety violation
+func unsafeMemoryAccess() {
+	var x int = 42
+	ptr := unsafe.Pointer(&x)
+	// Dangerous: Direct memory manipulation without bounds checking
+	*(*int)(ptr) = 100
+	// Even more dangerous: Pointer arithmetic
+	ptr2 := uintptr(ptr) + 8
+	_ = unsafe.Pointer(ptr2) // Potential buffer overflow
+}
+
+// NEW SAST Issue 18: Insecure Direct Object Reference (IDOR) - Missing authorization
+func getUserFile(userID int, fileID int) ([]byte, error) {
+	// VULNERABLE: No authorization check - any user can access any file
+	// Should verify that fileID belongs to userID before accessing
+	filename := fmt.Sprintf("/data/user_%d/file_%d.txt", userID, fileID)
+	return ioutil.ReadFile(filename) // Missing access control check
+}
+
+// NEW SAST Issue 19: Improper Error Handling - Information disclosure
+func authenticateUser(username, password string) error {
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(localhost:3306)/mydb", DB_USER, DB_PASSWORD))
+	if err != nil {
+		return fmt.Errorf("database connection failed: %v", err) // Leaks internal error details
+	}
+	defer db.Close()
+
+	query := fmt.Sprintf("SELECT password FROM users WHERE username = '%s'", username)
+	var storedPassword string
+	err = db.QueryRow(query).Scan(&storedPassword)
+	if err != nil {
+		// VULNERABLE: Error message reveals whether user exists
+		return fmt.Errorf("authentication failed: user '%s' not found: %v", username, err)
+	}
+
+	if storedPassword != password {
+		// VULNERABLE: Different error messages leak information about account status
+		return fmt.Errorf("authentication failed: invalid password for user '%s'", username)
+	}
+	return nil
+}
+
+// NEW SAST Issue 20: Weak Session Management - Predictable session ID
+var sessionCounter int
+
+func generateSessionID() string {
+	sessionCounter++
+	// VULNERABLE: Predictable session ID based on counter and time
+	// Attackers can guess or enumerate session IDs
+	timestamp := time.Now().Unix()
+	return fmt.Sprintf("SESSION_%d_%d", timestamp, sessionCounter)
 }
