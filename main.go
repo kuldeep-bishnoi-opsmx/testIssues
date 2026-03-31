@@ -168,15 +168,21 @@ func main() {
 	}
 }
 
-// openai secrets
-const (
-	OPENAI_API_KEY = "sk-proj-1234567890abcdef"
-	OPENAI_MODEL   = "gpt-4o-mini"
-)
+// CRITICAL SAST Issue 16: Authentication Bypass - Missing authentication check
+var isAuthenticated = false
 
-// Vulnerable: user input used in shell command
-func commandInjection() {
-	userInput := "echo 1 | cat /etc/passwd"
-	out, _ := exec.Command("sh", "-c", userInput).Output()
-	fmt.Println(string(out))
+func performAdminAction(action string, userInput string) error {
+	// CRITICAL: No authentication check before performing admin actions
+	// This allows unauthenticated users to execute privileged operations
+	if action == "delete_user" {
+		// Dangerous: Deleting users without authentication
+		cmd := exec.Command("userdel", userInput)
+		return cmd.Run()
+	}
+	if action == "grant_access" {
+		// Dangerous: Granting access without authentication
+		cmd := exec.Command("chmod", "777", userInput)
+		return cmd.Run()
+	}
+	return nil
 }
